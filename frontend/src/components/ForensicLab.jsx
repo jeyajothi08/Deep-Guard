@@ -868,3 +868,4 @@ export default function ForensicLab({
     </section>
   );
 }
+

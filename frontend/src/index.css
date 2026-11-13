@@ -293,6 +293,7 @@ body {
 /* Opacity Range Slider Styling */
 .opacity-slider {
   -webkit-appearance: none;
+  appearance: none;
   width: 100%;
   height: 6px;
   border-radius: 9999px;
