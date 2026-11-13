@@ -182,8 +182,8 @@ def evaluate_dataset(
 
     # 2. Render & Save Confusion Matrix
     fig, ax = plt.subplots(figsize=(6, 5))
-    im = ax.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
-    ax.figure.colorbar(im, ax=ax)
+    im = ax.imshow(cm, interpolation="nearest", cmap="Blues")
+    fig.colorbar(im, ax=ax)
     classes = ["Real", "Fake"]
     ax.set(
         xticks=np.arange(cm.shape[1]),
@@ -259,7 +259,7 @@ def run_video_compression_evaluation(
     if not sample_video_path or not sample_video_path.is_file():
         logger.info("Generating synthetic test face video for compression robustness test...")
         sample_video_path = temp_dir / "input_raw.mp4"
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        fourcc = cv2.VideoWriter.fourcc(*"mp4v")
         out = cv2.VideoWriter(str(sample_video_path), fourcc, 15, (320, 320))
         for _ in range(30):
             frame = np.full((320, 320, 3), 110, dtype=np.uint8)
@@ -281,7 +281,7 @@ def run_video_compression_evaluation(
     ffmpeg_available = subprocess.run(["which", "ffmpeg"], capture_output=True).returncode == 0
 
     for tier in tiers[1:]:
-        crf_val = 23 if "23" in tier["crf"] else 40
+        crf_val = 23 if "23" in str(tier["crf"]) else 40
         if ffmpeg_available:
             cmd = [
                 "ffmpeg", "-y", "-i", str(sample_video_path),
@@ -294,7 +294,7 @@ def run_video_compression_evaluation(
             cap = cv2.VideoCapture(str(sample_video_path))
             out_vid = cv2.VideoWriter(
                 str(tier["path"]),
-                cv2.VideoWriter_fourcc(*"mp4v"),
+                cv2.VideoWriter.fourcc(*"mp4v"),
                 15,
                 (320, 320)
             )

@@ -104,3 +104,4 @@ python ml_training/evaluate_research.py \
 2. **Confusion Matrix Plot:** Exported as `research_results/confusion_matrix.png`.
 3. **ROC Curve Plot:** Exported as `research_results/roc_curve.png`.
 4. **Video Compression Robustness Table:** Evaluates model resilience under **Raw/Lossless**, **H.264 Web (CRF 23)**, and **Aggressive Social Media Compression (CRF 40)**.
+
