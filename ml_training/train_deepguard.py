@@ -38,7 +38,7 @@ logging.basicConfig(
 logger = logging.getLogger("DeepGuard.Train")
 
 
-class StrictBinaryImageFolder(datasets.ImageFolder):
+class StrictBinaryFolder(datasets.ImageFolder):
     """
     Subclass of ImageFolder that guarantees strictly:
     - 'real' is mapped to index 0
@@ -59,8 +59,8 @@ class StrictBinaryImageFolder(datasets.ImageFolder):
         ordered_classes = sorted(class_to_idx.keys(), key=lambda k: class_to_idx[k])
         return ordered_classes, class_to_idx
 
-    def _find_classes(self, dir_path: str) -> Tuple[list, Dict[str, int]]:
-        return self.find_classes(dir_path)
+
+StrictBinaryImageFolder = StrictBinaryFolder
 
 
 def get_data_transforms() -> Tuple[transforms.Compose, transforms.Compose]:

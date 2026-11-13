@@ -129,9 +129,6 @@ def evaluate_dataset(
             ordered = sorted(c2idx.keys(), key=lambda k: c2idx[k])
             return ordered, c2idx
 
-        def _find_classes(self, dir_path: str):
-            return self.find_classes(dir_path)
-
     dataset = StrictBinaryFolder(str(test_dir), transform=eval_transform)
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
