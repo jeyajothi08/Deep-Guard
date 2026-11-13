@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+torch
+torchvision
+timm
+opencv-python
+grad-cam
+python-multipart
+sqlalchemy
+pillow
+numpy<2
+
