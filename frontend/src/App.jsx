@@ -1,46 +1,66 @@
 import React, { useState, useEffect, useRef } from 'react';
-import Header from './components/Header';
-import UploadZone from './components/UploadZone';
-import ResultCard from './components/ResultCard';
-import HistoryTable from './components/HistoryTable';
-import { API_BASE_URL } from './config';
+import Navbar from './components/Navbar';
+import HeroSection from './components/HeroSection';
+import PipelineSection from './components/PipelineSection';
+import ForensicLab from './components/ForensicLab';
+import BenchmarksSection from './components/BenchmarksSection';
+import HistorySection from './components/HistorySection';
+import Footer from './components/Footer';
+import { API_BASE_URL, FALLBACK_API_URL } from './config';
 
 export default function App() {
+  const [activeBaseUrl, setActiveBaseUrl] = useState(API_BASE_URL);
   const [backendStatus, setBackendStatus] = useState(null);
   const [checkingStatus, setCheckingStatus] = useState(false);
+  const [activeSection, setActiveSection] = useState('overview');
+
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState(null);
   const [currentResult, setCurrentResult] = useState(null);
+
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
-  const resultRef = useRef(null);
-
-  // Check backend health
+  // Health check with automatic fallback between 127.0.0.1 and localhost
   const checkHealth = async () => {
     setCheckingStatus(true);
+    let resolvedUrl = activeBaseUrl;
+
     try {
-      const response = await fetch(`${API_BASE_URL}/health`);
-      if (response.ok) {
-        const data = await response.json();
+      let res = await fetch(`${activeBaseUrl}/health`, { signal: AbortSignal.timeout(3500) });
+      if (res.ok) {
+        const data = await res.json();
         setBackendStatus(data);
-      } else {
-        setBackendStatus({ status: 'error', model_loaded: false });
+        return;
       }
     } catch {
-      setBackendStatus({ status: 'offline', model_loaded: false });
+      // Primary URL failed, try fallback
+      try {
+        const fallback = activeBaseUrl === API_BASE_URL ? FALLBACK_API_URL : API_BASE_URL;
+        let resFallback = await fetch(`${fallback}/health`, { signal: AbortSignal.timeout(3500) });
+        if (resFallback.ok) {
+          const data = await resFallback.json();
+          setBackendStatus(data);
+          setActiveBaseUrl(fallback);
+          return;
+        }
+      } catch {
+        // Both failed
+      }
     } finally {
       setCheckingStatus(false);
     }
+
+    setBackendStatus({ status: 'offline', model_loaded: false });
   };
 
-  // Fetch scan history
+  // Fetch scan evaluation history
   const fetchHistory = async () => {
     setLoadingHistory(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/history`);
-      if (response.ok) {
-        const data = await response.json();
+      const res = await fetch(`${activeBaseUrl}/history`);
+      if (res.ok) {
+        const data = await res.json();
         setHistory(data);
       }
     } catch (err) {
@@ -50,20 +70,29 @@ export default function App() {
     }
   };
 
-  // Initial load
   useEffect(() => {
     checkHealth();
     fetchHistory();
-  }, []);
+  }, [activeBaseUrl]);
 
-  // Handle media analysis submission
+  // Handle navigation
+  const scrollToSection = (sectionId) => {
+    setActiveSection(sectionId);
+    const element = document.getElementById(sectionId);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  // Run media analysis
   const handleAnalyze = async (file, mediaType) => {
     setAnalyzing(true);
     setAnalysisError(null);
 
-    const endpoint = mediaType === 'video'
-      ? `${API_BASE_URL}/analyze/video`
-      : `${API_BASE_URL}/analyze/image`;
+    const endpoint =
+      mediaType === 'video'
+        ? `${activeBaseUrl}/analyze/video`
+        : `${activeBaseUrl}/analyze/image`;
 
     const formData = new FormData();
     formData.append('file', file);
@@ -71,24 +100,21 @@ export default function App() {
     try {
       const response = await fetch(endpoint, {
         method: 'POST',
-        body: formData,
+        body: formData
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.detail || `Server responded with status ${response.status}`);
+        throw new Error(data.detail || `Server returned status ${response.status}`);
       }
 
       setCurrentResult(data);
-      // Refresh history immediately
+      // Refresh history records immediately
       fetchHistory();
 
-      // Scroll to result smoothly
-      setTimeout(() => {
-        resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 100);
-
+      // Ensure Forensic Lab is visible and active
+      setActiveSection('forensic-lab');
     } catch (err) {
       console.error('Analysis error:', err);
       setAnalysisError(err.message || 'An unexpected error occurred while communicating with the backend.');
@@ -99,30 +125,40 @@ export default function App() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      {/* Top Navbar */}
-      <Header
+      {/* Top Sticky Glass Navbar */}
+      <Navbar
         backendStatus={backendStatus}
         checkingStatus={checkingStatus}
         onCheckStatus={checkHealth}
+        activeSection={activeSection}
+        onNavigate={setActiveSection}
       />
 
-      {/* Main Content Area */}
-      <main className="container" style={{ flex: 1, padding: '2.5rem 1.5rem' }}>
-        {/* Inspection / Upload Zone */}
-        <UploadZone
+      {/* Main Content Sections */}
+      <main style={{ flex: 1 }}>
+        {/* 1. Hero Landing Section */}
+        <HeroSection
+          onStartInspection={() => scrollToSection('forensic-lab')}
+          onExploreArchitecture={() => scrollToSection('architecture')}
+        />
+
+        {/* 2. Interactive Pipeline Section */}
+        <PipelineSection />
+
+        {/* 3. Forensic Detection Lab Studio */}
+        <ForensicLab
           onAnalyze={handleAnalyze}
           analyzing={analyzing}
           error={analysisError}
           onClearError={() => setAnalysisError(null)}
+          result={currentResult}
         />
 
-        {/* Explainability & Result Section */}
-        <div ref={resultRef}>
-          <ResultCard result={currentResult} />
-        </div>
+        {/* 4. Research & Robustness Benchmarks */}
+        <BenchmarksSection />
 
-        {/* Recent Scan History */}
-        <HistoryTable
+        {/* 5. Audit & Scan Logs */}
+        <HistorySection
           history={history}
           loading={loadingHistory}
           onRefresh={fetchHistory}
@@ -130,19 +166,7 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <footer style={{
-        borderTop: '1px solid var(--border-subtle)',
-        padding: '1.75rem 0',
-        textAlign: 'center',
-        fontSize: '0.82rem',
-        color: 'var(--text-muted)',
-        background: 'rgba(8, 12, 22, 0.9)'
-      }}>
-        <div className="container">
-          DeepGuard • AI Based Deepfake Detection System • Built with FastAPI, EfficientNet-B0, PyTorch Grad-CAM & React
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 }
-
