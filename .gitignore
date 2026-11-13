@@ -29,6 +29,9 @@ test_output/
 *.tmp
 .DS_Store
 .cache/
+dataset/
+output/
+research_results/
 
 # Model Weights (keep folder structure via .gitkeep)
 backend/weights/*.pth
