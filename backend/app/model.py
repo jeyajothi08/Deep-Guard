@@ -173,12 +173,12 @@ class DeepfakeDetector:
         with torch.no_grad():
             logits = self.model(tensor_img)
             probs = torch.softmax(logits, dim=1)
-            fake_prob = float(probs[0, 1].item()) * 100.0
+            fake_prob = float(probs[0, 0].item()) * 100.0
 
         verdict = self.classify_score(fake_prob)
 
         # 5. Generate Grad-CAM heatmap targeting index 1 (Fake class)
-        targets = [ClassifierOutputTarget(1)]
+        targets = [ClassifierOutputTarget(0)]
         heatmap_base64 = ""
 
         try:

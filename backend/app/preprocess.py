@@ -29,7 +29,7 @@ if face_cascade.empty():
 
 def extract_face_from_image(
     image_path: Union[str, Path, np.ndarray],
-    padding_ratio: float = 0.2,
+    padding_ratio: float = 0.55,
     target_size: tuple = (224, 224)
 ) -> Optional[np.ndarray]:
     """
@@ -110,7 +110,7 @@ def extract_face_from_image(
 def extract_faces_from_video(
     video_path: Union[str, Path],
     num_frames: int = 15,
-    padding_ratio: float = 0.2,
+    padding_ratio: float = 0.55,
     target_size: tuple = (224, 224)
 ) -> List[np.ndarray]:
     """
