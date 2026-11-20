@@ -5,8 +5,8 @@ SQLite database setup using SQLAlchemy ORM to persist detection scan history.
 """
 
 import os
-from datetime import datetime
-from typing import Any, Dict, Generator
+from datetime import datetime, timezone
+from typing import Any, Dict, Generator, cast
 
 from sqlalchemy import Column, DateTime, Float, Integer, String, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
@@ -23,6 +23,11 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 
+def get_utc_now() -> datetime:
+    """Returns current UTC timestamp in a timezone-aware format."""
+    return datetime.now(timezone.utc)
+
+
 class ScanRecord(Base):
     """
     SQLAlchemy model representing an analyzed media scan record.
@@ -35,17 +40,18 @@ class ScanRecord(Base):
     fake_probability = Column(Float, nullable=False)
     verdict = Column(String, nullable=False)     # "Likely Real", "Inconclusive", "Likely Fake"
     frames_analyzed = Column(Integer, default=1, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=get_utc_now, nullable=False)
 
     def to_dict(self) -> Dict[str, Any]:
         """
         Serializes the model instance to a JSON-compatible dictionary.
         """
+        prob = cast(float, self.fake_probability)
         return {
             "id": self.id,
             "filename": self.filename,
             "media_type": self.media_type,
-            "fake_probability": round(self.fake_probability, 2),
+            "fake_probability": round(prob, 2) if prob is not None else 0.0,
             "verdict": self.verdict,
             "frames_analyzed": self.frames_analyzed,
             "created_at": self.created_at.isoformat() if self.created_at else None,
