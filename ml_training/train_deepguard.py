@@ -14,8 +14,12 @@ os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
 
 import argparse
 import copy
+import glob
+import io
 import json
 import logging
+import random
+import shutil
 import time
 from pathlib import Path
 from typing import Dict, Tuple
@@ -36,6 +40,30 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S"
 )
 logger = logging.getLogger("DeepGuard.Train")
+
+
+class RandomJPEGAndScale:
+    """
+    JPEG-Invariant Augmentation:
+    Applies random JPEG compression and spatial downscaling/upscaling
+    to eliminate compression frequency shortcuts and force the model
+    to focus on genuine biological facial features rather than compression artifacts.
+    """
+    def __init__(self, jpeg_prob: float = 0.7, scale_prob: float = 0.5):
+        self.jpeg_prob = jpeg_prob
+        self.scale_prob = scale_prob
+
+    def __call__(self, img: Image.Image) -> Image.Image:
+        if random.random() < self.jpeg_prob:
+            q = random.randint(45, 95)
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=q)
+            buf.seek(0)
+            img = Image.open(buf).convert("RGB")
+        if random.random() < self.scale_prob:
+            s = random.randint(128, 224)
+            img = img.resize((s, s), Image.BILINEAR)
+        return img
 
 
 class StrictBinaryFolder(datasets.ImageFolder):
@@ -63,30 +91,66 @@ class StrictBinaryFolder(datasets.ImageFolder):
 StrictBinaryImageFolder = StrictBinaryFolder
 
 
-def get_data_transforms() -> Tuple[transforms.Compose, transforms.Compose]:
+def get_data_transforms(use_jpeg_aug: bool = True) -> Tuple[transforms.Compose, transforms.Compose]:
     """
     Returns data augmentation and normalization pipelines.
-    Uses standard ImageNet statistics for EfficientNet-B0.
+    Includes JPEG-invariant compression augmentation to eliminate web compression shortcuts.
     """
     mean = [0.485, 0.456, 0.406]
     std = [0.229, 0.224, 0.225]
 
-    train_transform = transforms.Compose([
-        transforms.Resize((240, 240)),
-        transforms.RandomResizedCrop(224, scale=(0.85, 1.0)),
+    train_ops = []
+    if use_jpeg_aug:
+        train_ops.append(RandomJPEGAndScale(jpeg_prob=0.7, scale_prob=0.5))
+    train_ops.extend([
+        transforms.Resize((224, 224)),
         transforms.RandomHorizontalFlip(p=0.5),
         transforms.ColorJitter(brightness=0.15, contrast=0.15, saturation=0.15),
         transforms.ToTensor(),
         transforms.Normalize(mean=mean, std=std),
     ])
 
-    val_transform = transforms.Compose([
+    val_ops = []
+    if use_jpeg_aug:
+        val_ops.append(RandomJPEGAndScale(jpeg_prob=0.7, scale_prob=0.5))
+    val_ops.extend([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
         transforms.Normalize(mean=mean, std=std),
     ])
 
-    return train_transform, val_transform
+    return transforms.Compose(train_ops), transforms.Compose(val_ops)
+
+
+def build_balanced_subset(
+    src_dir: Path,
+    dst_dir: Path,
+    train_count_per_class: int = 6000,
+    val_count_per_class: int = 1000,
+    seed: int = 42
+) -> None:
+    """
+    Creates a balanced 50/50 dataset subset using symlinks or copies.
+    """
+    logger.info("Building balanced 50/50 dataset subset at '%s'...", dst_dir)
+    if dst_dir.exists():
+        shutil.rmtree(dst_dir)
+    random.seed(seed)
+    for cls in ["real", "fake"]:
+        for split, count in [("train", train_count_per_class), ("val", val_count_per_class)]:
+            target_dir = dst_dir / split / cls
+            target_dir.mkdir(parents=True, exist_ok=True)
+            files = sorted(glob.glob(str(src_dir / split / cls / "*")))
+            if not files:
+                continue
+            selected = random.sample(files, min(count, len(files)))
+            for f in selected:
+                dst = target_dir / Path(f).name
+                try:
+                    os.symlink(os.path.abspath(f), dst)
+                except OSError:
+                    shutil.copy2(f, dst)
+    logger.info("Balanced subset ready at '%s'", dst_dir)
 
 
 def create_dummy_dataset(base_dir: Path, num_samples_per_class: int = 20) -> None:
@@ -207,12 +271,14 @@ def plot_curves(history: Dict[str, list], output_path: Path) -> None:
 def main():
     parser = argparse.ArgumentParser(description="DeepGuard EfficientNet-B0 Training Pipeline")
     parser.add_argument("--data-dir", type=str, default="dataset", help="Root dataset directory containing train/ and val/ subdirectories.")
-    parser.add_argument("--epochs", type=int, default=10, help="Number of training epochs (default: 10).")
+    parser.add_argument("--epochs", type=int, default=6, help="Number of training epochs (default: 6).")
     parser.add_argument("--batch-size", type=int, default=32, help="Mini-batch size (default: 32).")
     parser.add_argument("--lr", type=float, default=3e-4, help="Peak learning rate for AdamW (default: 0.0003).")
-    parser.add_argument("--weight-decay", type=float, default=1e-2, help="Weight decay for AdamW regularization (default: 0.01).")
+    parser.add_argument("--weight-decay", type=float, default=1e-4, help="Weight decay for AdamW regularization (default: 0.0001).")
     parser.add_argument("--num-workers", type=int, default=0, help="DataLoader worker processes (default: 0).")
     parser.add_argument("--output-dir", type=str, default="output", help="Directory where weights and metrics will be saved.")
+    parser.add_argument("--fast-subset", action="store_true", help="Build a fast balanced 50/50 subset (6000 real / 6000 fake train, 1000 val) before training.")
+    parser.add_argument("--no-jpeg-aug", action="store_true", help="Disable JPEG-invariant data augmentation.")
     parser.add_argument("--generate-dummy-data", action="store_true", help="Generate a small synthetic dataset for testing if dataset is missing.")
     parser.add_argument("--device", type=str, default=None, help="Target hardware: 'cuda', 'mps', or 'cpu'. Defaults to auto-detect.")
     args = parser.parse_args()
@@ -240,7 +306,14 @@ def main():
             logger.warning("Dataset not found at '%s'. Auto-generating synthetic test dataset...", data_path)
             create_dummy_dataset(data_path, num_samples_per_class=24)
 
-    train_transform, val_transform = get_data_transforms()
+    # Optional balanced fast subset creation
+    if args.fast_subset:
+        fast_dir = Path("fast_ds").resolve()
+        build_balanced_subset(data_path, fast_dir, train_count_per_class=6000, val_count_per_class=1000)
+        train_dir = fast_dir / "train"
+        val_dir = fast_dir / "val"
+
+    train_transform, val_transform = get_data_transforms(use_jpeg_aug=not args.no_jpeg_aug)
 
     train_dataset = StrictBinaryImageFolder(str(train_dir), transform=train_transform)
     val_dataset = StrictBinaryImageFolder(str(val_dir), transform=val_transform)
