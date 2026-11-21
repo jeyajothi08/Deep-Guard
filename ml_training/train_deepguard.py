@@ -22,7 +22,7 @@ import random
 import shutil
 import time
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Any, Dict, List, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -62,7 +62,7 @@ class RandomJPEGAndScale:
             img = Image.open(buf).convert("RGB")
         if random.random() < self.scale_prob:
             s = random.randint(128, 224)
-            img = img.resize((s, s), Image.BILINEAR)
+            img = img.resize((s, s), Image.Resampling.BILINEAR)
         return img
 
 
@@ -99,7 +99,7 @@ def get_data_transforms(use_jpeg_aug: bool = True) -> Tuple[transforms.Compose, 
     mean = [0.485, 0.456, 0.406]
     std = [0.229, 0.224, 0.225]
 
-    train_ops = []
+    train_ops: List[Any] = []
     if use_jpeg_aug:
         train_ops.append(RandomJPEGAndScale(jpeg_prob=0.7, scale_prob=0.5))
     train_ops.extend([
@@ -110,7 +110,7 @@ def get_data_transforms(use_jpeg_aug: bool = True) -> Tuple[transforms.Compose, 
         transforms.Normalize(mean=mean, std=std),
     ])
 
-    val_ops = []
+    val_ops: List[Any] = []
     if use_jpeg_aug:
         val_ops.append(RandomJPEGAndScale(jpeg_prob=0.7, scale_prob=0.5))
     val_ops.extend([
